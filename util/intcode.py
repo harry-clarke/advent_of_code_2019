@@ -1,3 +1,4 @@
+import enum
 from itertools import repeat
 from typing import Callable, Iterator
 
@@ -16,27 +17,37 @@ def parameter_input(*args: int) -> Iterator[int]:
     return iter(args)
 
 
-class MemoryOutput(Iterator):
+class Memory(Iterator):
     """
     Stores any output from the IntCode machine in self.memory
     To access output, simply reference self.memory
+    Can also be used as input to another IntCode machine, creating a pipe between them.
     """
 
     def __init__(self):
         self.memory = []
 
     def store(self, value: int):
-        self.memory.append(value)
+        # print(value)
+        self.memory.insert(0, value)
 
     def __next__(self):
-        return self.store
+        if len(self.memory) == 0:
+            raise StopIteration()
+        return self.memory.pop()
+
+
+STATUS_CODES = enum.Enum('STATUS_CODES', 'INIT RUNNING PAUSED FINISHED')
+PAUSE_CODES = enum.Enum('PAUSE_CODES', 'READING')
 
 
 class IntCode:
 
     def __init__(self, tape: [int], stdin: Iterator[int] = TERMINAL_INPUT,
                  stdout: Callable[[int], None] = TERMINAL_OUTPUT):
-        self.stdout: Iterator[Callable[[int], None]] = stdout
+        self.status = STATUS_CODES.INIT
+        self.pause_code = None
+        self.stdout: Callable[[int], None] = stdout
         self.stdin: Iterator[int] = stdin
         self.position = 0
         self.OPCODES = {
@@ -49,7 +60,7 @@ class IntCode:
             7: (3, self.less_than_instruction),
             8: (3, self.equals_instruction),
         }
-        self.tape = tape
+        self.tape = list(tape)
 
     def read(self, mode, param):
         return param if mode == 1 else self.tape[param]
@@ -74,12 +85,17 @@ class IntCode:
 
     def input_instruction(self, params: [(int, int)]):
         out_addr = params[0][1]
-        in_1 = next(self.stdin)
+        try:
+            in_1 = next(self.stdin)
+        except StopIteration:
+            self.status = STATUS_CODES.PAUSED
+            self.pause_code = PAUSE_CODES.READING
+            return
         self.tape[out_addr] = in_1
 
     def output_instruction(self, params: [(int, int)]):
         in_addr = self.read(*params[0])
-        next(self.stdout)(in_addr)
+        self.stdout(in_addr)
 
     def jump_if_true_instruction(self, params: [(int, int)]):
         condition, new_position = self.read_params(params)
@@ -102,10 +118,12 @@ class IntCode:
         self.tape[out_addr] = out
 
     def run(self):
+        self.status = STATUS_CODES.RUNNING
         while True:
             instr = str(self.tape[self.position])
             op_code = int(instr[-2:])
             if op_code == 99:
+                self.status = STATUS_CODES.FINISHED
                 return
             (param_count, op) = self.OPCODES[op_code]
 
@@ -119,11 +137,14 @@ class IntCode:
             params = list(zip(param_modes, raw_params))
             self.position += param_count + 1
             op(params)
+            if self.status == STATUS_CODES.PAUSED:
+                self.position -= len(params) + 1
+                return
 
 
 def run_as_function(tape: [int], parameters: [int]) -> [int]:
-    mem = MemoryOutput()
-    m = IntCode(tape, parameter_input(*parameters), mem)
+    mem = Memory()
+    m = IntCode(tape, parameter_input(*parameters), mem.store)
     m.run()
     return mem.memory
 
@@ -167,7 +188,7 @@ def test_parameter_input():
     run([3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1], parameter_input(0))
 
 
-def test_memory_output():
+def test_memory():
     r = run_as_function([3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8], [8])
     assert 1 == r[0]
     r = run_as_function([3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8], [1])
@@ -186,4 +207,4 @@ if __name__ == '__main__':
     # test_1()
     # test_2()
     # test_parameter_input()
-    test_memory_output()
+    test_memory()
