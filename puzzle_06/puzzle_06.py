@@ -1,5 +1,3 @@
-import itertools
-
 TEST_INPUT_1 = ['COM)B', 'B)C', 'C)D', 'D)E', 'E)F', 'B)G', 'G)H', 'D)I', 'E)J', 'J)K', 'K)L']
 TEST_INPUT_2 = ['COM)B'
     , 'B)C'
