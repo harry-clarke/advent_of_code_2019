@@ -1,6 +1,8 @@
 import enum
+from abc import abstractmethod
+from collections.abc import MutableSequence
 from itertools import repeat
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Optional, overload, Union, Iterable
 
 
 def __terminal_input__():
@@ -10,7 +12,7 @@ def __terminal_input__():
 
 TERMINAL_INPUT = __terminal_input__()
 
-TERMINAL_OUTPUT = repeat(print)
+TERMINAL_OUTPUT = print
 
 
 def parameter_input(*args: int) -> Iterator[int]:
@@ -41,10 +43,56 @@ STATUS_CODES = enum.Enum('STATUS_CODES', 'INIT RUNNING PAUSED FINISHED')
 PAUSE_CODES = enum.Enum('PAUSE_CODES', 'READING')
 
 
+class Tape(MutableSequence):
+
+    def __init__(self, data=()):
+        self.list = []
+        self.extend(data)
+
+    def __len__(self) -> int:
+        return len(self.list)
+
+    def insert(self, index: int, v) -> None:
+        if index < 0:
+            raise IndexError('Tape doesn\'t support negative indices')
+        ext = len(self.list) - index
+        if ext > 0:
+            self.list.extend(repeat(0, ext))
+        self.list.insert(index, v)
+
+    def __getitem__(self, i: int):
+        if isinstance(i, slice):
+            return [self[j] for j in range(i.start, i.stop, 1 if i.step is None else i.step)]
+        if i < 0:
+            raise IndexError('Tape doesn\'t support negative indices')
+        if len(self.list) <= i:
+            return 0
+        return self.list[i]
+
+    def __setitem__(self, i: int, vs) -> None:
+        if isinstance(i, slice):
+            for j, v in zip(range(i.start, i.stop, i.step), vs):
+                self[j] = v
+        if i < 0:
+            raise IndexError('Tape doesn\'t support negative indices')
+        ext = len(self.list) - i + 1
+        if ext > 0:
+            self.list.extend(repeat(0, ext))
+        self.list[i] = vs
+
+    def __delitem__(self, i: int) -> None:
+        del self.list[i]
+
+
 class IntCode:
+    """
+    - The computer's available memory should be larger than the initial program
+    - Reads to unwritten memory returns 0
+    """
 
     def __init__(self, tape: [int], stdin: Iterator[int] = TERMINAL_INPUT,
                  stdout: Callable[[int], None] = TERMINAL_OUTPUT):
+        self.relative_base = 0
         self.status = STATUS_CODES.INIT
         self.pause_code = None
         self.stdout: Callable[[int], None] = stdout
@@ -59,11 +107,16 @@ class IntCode:
             6: (2, self.jump_if_false_instruction),
             7: (3, self.less_than_instruction),
             8: (3, self.equals_instruction),
+            9: (1, self.adjust_relative_base_instruction)
         }
-        self.tape = list(tape)
+        self.tape = Tape(tape)
 
     def read(self, mode, param):
-        return param if mode == 1 else self.tape[param]
+        return {
+            0: lambda: self.tape[param],
+            1: lambda: param,
+            2: lambda: self.tape[self.relative_base + param]
+        }[mode]()
 
     def read_params(self, unread: [(int, int)]):
         return [self.read(*p) for p in unread]
@@ -74,6 +127,10 @@ class IntCode:
         params = [self.read(*p) for p in unread[:-1]]
         params.append(unread[-1][1])
         return params
+
+    def adjust_relative_base_instruction(self, params: [(int, int)]):
+        adjustment = self.read(*params[0])
+        self.relative_base += adjustment
 
     def add_instruction(self, params: [(int, int)]):
         in_1, in_2, out_addr = self.read_params_output_tail(params)
@@ -203,8 +260,22 @@ def test_memory():
     assert 0 == r[0]
 
 
+def test_relative_base():
+    r = run_as_function([109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99], [])
+    assert [109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99] == r
+    r = run_as_function([1102, 34915192, 34915192, 7, 4, 7, 99, 0], [])
+    assert 16 == len(str(r[0]))
+
+
+def test_large_numbers():
+    r = run_as_function([104, 1125899906842624, 99], [])
+    assert 1125899906842624 == r[0]
+
+
 if __name__ == '__main__':
     # test_1()
     # test_2()
     # test_parameter_input()
-    test_memory()
+    # test_memory()
+    # test_large_numbers()
+    pass
