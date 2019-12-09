@@ -1,8 +1,7 @@
 import enum
-from abc import abstractmethod
 from collections.abc import MutableSequence
 from itertools import repeat
-from typing import Callable, Iterator, Optional, overload, Union, Iterable
+from typing import Callable, Iterator, Union, Tuple
 
 
 def __terminal_input__():
@@ -46,6 +45,7 @@ PAUSE_CODES = enum.Enum('PAUSE_CODES', 'READING')
 class Tape(MutableSequence):
 
     def __init__(self, data=()):
+        self.relative_base = 0
         self.list = []
         self.extend(data)
 
@@ -60,7 +60,14 @@ class Tape(MutableSequence):
             self.list.extend(repeat(0, ext))
         self.list.insert(index, v)
 
-    def __getitem__(self, i: int):
+    def __getitem__(self, i: Union[int, slice, Tuple[int, int]]):
+        if isinstance(i, tuple):
+            mode, param = i
+            return {
+                0: lambda: self.list[param],
+                1: lambda: param,
+                2: lambda: self.list[self.relative_base + param]
+            }[mode]()
         if isinstance(i, slice):
             return [self[j] for j in range(i.start, i.stop, 1 if i.step is None else i.step)]
         if i < 0:
@@ -69,13 +76,21 @@ class Tape(MutableSequence):
             return 0
         return self.list[i]
 
-    def __setitem__(self, i: int, vs) -> None:
+    def __setitem__(self, i: Union[int, slice, tuple], vs) -> None:
+        if isinstance(i, tuple):
+            mode, param = i
+            if mode == 1:
+                raise ValueError('Can only write to an address')
+            index = param if mode == 0 else self.relative_base + param
+            self[index] = vs
+            return
         if isinstance(i, slice):
             for j, v in zip(range(i.start, i.stop, i.step), vs):
                 self[j] = v
+            return
         if i < 0:
             raise IndexError('Tape doesn\'t support negative indices')
-        ext = len(self.list) - i + 1
+        ext = i - len(self.list) + 1
         if ext > 0:
             self.list.extend(repeat(0, ext))
         self.list[i] = vs
@@ -111,68 +126,50 @@ class IntCode:
         }
         self.tape = Tape(tape)
 
-    def read(self, mode, param):
-        return {
-            0: lambda: self.tape[param],
-            1: lambda: param,
-            2: lambda: self.tape[self.relative_base + param]
-        }[mode]()
-
-    def read_params(self, unread: [(int, int)]):
-        return [self.read(*p) for p in unread]
-
-    # Reads parameters, making addresss lookups when necessary.
-    # Always assumes last parameter is an output, and therefore performs no lookup.
-    def read_params_output_tail(self, unread: [(int, int)]):
-        params = [self.read(*p) for p in unread[:-1]]
-        params.append(unread[-1][1])
-        return params
-
     def adjust_relative_base_instruction(self, params: [(int, int)]):
-        adjustment = self.read(*params[0])
-        self.relative_base += adjustment
+        adjustment = self.tape[params[0]]
+        self.tape.relative_base += adjustment
 
     def add_instruction(self, params: [(int, int)]):
-        in_1, in_2, out_addr = self.read_params_output_tail(params)
-        self.tape[out_addr] = in_1 + in_2
+        in_1, in_2 = [self.tape[i] for i in params[:2]]
+        self.tape[params[2]] = in_1 + in_2
 
     def mul_instruction(self, params: [(int, int)]):
-        in_1, in_2, out_addr = self.read_params_output_tail(params)
-        self.tape[out_addr] = in_1 * in_2
+        in_1, in_2 = [self.tape[i] for i in params[:2]]
+        self.tape[params[2]] = in_1 * in_2
 
     def input_instruction(self, params: [(int, int)]):
-        out_addr = params[0][1]
         try:
             in_1 = next(self.stdin)
         except StopIteration:
             self.status = STATUS_CODES.PAUSED
             self.pause_code = PAUSE_CODES.READING
             return
-        self.tape[out_addr] = in_1
+        self.tape[params[0]] = in_1
 
     def output_instruction(self, params: [(int, int)]):
-        in_addr = self.read(*params[0])
+        in_addr = self.tape[params[0]]
         self.stdout(in_addr)
 
     def jump_if_true_instruction(self, params: [(int, int)]):
-        condition, new_position = self.read_params(params)
+        condition, new_position = [self.tape[i] for i in params]
         if condition != 0:
             self.position = new_position
 
     def jump_if_false_instruction(self, params: [(int, int)]):
-        condition, new_position = self.read_params(params)
+        condition, new_position = [self.tape[i] for i in params]
         if condition == 0:
             self.position = new_position
 
     def less_than_instruction(self, params: [(int, int)]):
-        in_1, in_2, out_addr = self.read_params_output_tail(params)
+        in_1, in_2 = [self.tape[i] for i in params[:2]]
         out = int(in_1 < in_2)
-        self.tape[out_addr] = out
+        self.tape[params[2]] = out
 
     def equals_instruction(self, params: [(int, int)]):
-        in_1, in_2, out_addr = self.read_params_output_tail(params)
+        in_1, in_2 = [self.tape[i] for i in params[:2]]
         out = int(in_1 == in_2)
-        self.tape[out_addr] = out
+        self.tape[params[2]] = out
 
     def run(self):
         self.status = STATUS_CODES.RUNNING
