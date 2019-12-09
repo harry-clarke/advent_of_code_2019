@@ -12,7 +12,14 @@ TAPE = read_tape()
 
 def answer_1():
     r = run_as_function(TAPE, [1])
-    print('Answer 1: %s' % r)
+    print('Answer 1: %s' % r[0])
+
+
+def answer_2():
+    r = run_as_function(TAPE, [2])
+    print('Answer 2: %s' % r[0])
+
 
 if __name__ == '__main__':
     answer_1()
+    answer_2()
