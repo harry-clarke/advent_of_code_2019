@@ -1,6 +1,7 @@
+from __future__ import annotations
 from functools import reduce
 from math import pi, hypot, atan, copysign, degrees, atan2
-from typing import Callable, Union, List, Tuple
+from typing import Callable, Union, List, Tuple, Optional
 
 TEST_1 = (
     ['.#..#', '.....', '#####', '....#', '...##'],
@@ -31,39 +32,25 @@ class AsteroidField:
 
     def calc_all_lines_of_site(self) -> LINES_OF_SIGHT:
         for asteroid in self.asteroids:
-            self.calc_asteroid_los(asteroid)
+            self.calc_lines_of_sight(asteroid)
         return self.asteroid_map
 
-    def calc_asteroid_los(self, asteroid: COORD) -> LINE_OF_SIGHT:
-        if asteroid in self.asteroid_map:
-            return self.asteroid_map[asteroid]
-        res = {}
-        los: AsteroidField.LINE_OF_SIGHT = {}
-        for remote in self.asteroids:
-            if remote == asteroid:
-                continue
-            if remote in self.asteroid_map:
-                if asteroid in self.asteroid_map[remote]:
-                    recip_bearing, distance = self.asteroid_map[remote][asteroid]
-                    bearing = (recip_bearing + 180) % 360
-                    res[remote] = bearing, distance
-                    los[bearing] = remote
-                else:
-                    continue
-            else:
-                bearing, distance = AsteroidField.__calc_los(asteroid, remote)
-                if bearing in los:
-                    other = los[bearing]
-                    if res[other][1] > distance:
-                        del res[other]
-                        res[remote] = bearing, distance
-                        los[bearing] = remote
-                else:
-                    res[remote] = bearing, distance
-                    los[bearing] = remote
+    def calc_lines_of_sight(self, coords: COORD) -> LINE_OF_SIGHT:
+        if coords in self.asteroid_map:
+            return self.asteroid_map[coords]
+        asteroid = Asteroid(coords, self)
 
-        self.asteroid_map[asteroid] = res
-        return res
+        for remote in self.asteroids:
+            if remote == coords:
+                continue
+            displacement = asteroid.calc_line_of_sight(remote)
+            if displacement is not None:
+                asteroid.res[remote] = displacement
+                bearing, distance = displacement
+                asteroid.los[bearing] = remote
+
+        self.asteroid_map[coords] = asteroid.res
+        return asteroid.res
 
     def show_field_los(self) -> str:
         return self.__define_field(lambda *coord: str(len(self.asteroid_map[coord])))
@@ -81,7 +68,7 @@ class AsteroidField:
         field = [['.' for _ in range(width)] for _ in range(height)]
         for x, y in self.asteroids:
             field[y][x] = f(x, y)
-        field_str = ''.join([''.join(row) + ('\n') for row in field])
+        field_str = ''.join([''.join(row) + '\n' for row in field])
         return field_str
 
     def __str__(self) -> str:
@@ -99,8 +86,35 @@ class AsteroidField:
                     asteroids.append((x, y))
         return asteroids
 
+
+class Asteroid:
+    def __init__(self, coords: AsteroidField.COORD, asteroid_field: AsteroidField):
+        self.asteroid_field = asteroid_field
+        self.coords = coords
+        self.res = {}
+        self.los: AsteroidField.LINE_OF_SIGHT = {}
+
+    def calc_line_of_sight(self: Asteroid, remote: AsteroidField.COORD) -> Optional[
+            Tuple[AsteroidField.BEARING, AsteroidField.DISTANCE]]:
+        if remote in self.asteroid_field.asteroid_map:
+            if self.coords in self.asteroid_field.asteroid_map[remote]:
+                recip_bearing, distance = self.asteroid_field.asteroid_map[remote][self.coords]
+                bearing = (recip_bearing + 180) % 360
+                return bearing, distance
+            else:
+                return
+        else:
+            bearing, distance = Asteroid.__calc_los(self.coords, remote)
+            if bearing in self.los:
+                other = self.los[bearing]
+                if self.res[other][1] > distance:
+                    del self.res[other]
+                    return bearing, distance
+            else:
+                return bearing, distance
+
     @staticmethod
-    def __calc_los(a1: COORD, a2: COORD) -> (BEARING, DISTANCE):
+    def __calc_los(a1: AsteroidField.COORD, a2: AsteroidField.COORD) -> (AsteroidField.BEARING, AsteroidField.DISTANCE):
         (x1, y1), (x2, y2) = a1, a2
         dx, dy = x2 - x1, y1 - y2
         dist = hypot(dx, dy)
