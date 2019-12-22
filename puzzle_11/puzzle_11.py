@@ -5,17 +5,51 @@ from util.intcode import IntCode, STATUS_CODES, Memory
 
 class Panel:
     rendered_cells: {(int, int): int}
+    start_x: int
+    end_x: int
+    start_y: int
+    end_y: int
 
     def __init__(self):
+        self.start_x = 0
+        self.end_x = 0
+        self.start_y = 0
+        self.end_y = 0
         self.rendered_cells = {}
 
     def get(self, coord):
         if coord not in self.rendered_cells:
             self.rendered_cells[coord] = 0
+            self.__adjust_size(coord)
         return self.rendered_cells[coord]
 
     def set(self, coord, colour):
+        self.__adjust_size(coord)
         self.rendered_cells[coord] = colour
+
+    def __adjust_size(self, coord):
+        x, y = coord
+
+        if x > self.end_x:
+            self.end_x = x
+        elif x < self.start_x:
+            self.start_x = x
+
+        if y > self.end_y:
+            self.end_y = y
+        elif y < self.start_y:
+            self.start_y = y
+
+    def __str__(self) -> str:
+        s = ''
+        for y in reversed(range(self.start_y, self.end_y + 1)):
+            for x in range(self.start_x, self.end_x + 1):
+                if (x, y) in self.rendered_cells and self.rendered_cells[(x, y)] == 1:
+                    s += '#'
+                else:
+                    s += ' '
+            s += '\n'
+        return s
 
 
 class Robot:
@@ -41,7 +75,6 @@ class Robot:
         self.brain.run()
 
     def act(self, colour, rotation_bit):
-        print(f'Brain output: colour: {colour}, rotation: {rotation_bit}')
         self.panel.set(self.coord, colour)
         self.change_direction(rotation_bit)
         self.move_forward()
@@ -88,7 +121,6 @@ class Robot:
 
     def __brain_input(self):
         while True:
-            print(f'Brain input: {self.panel.get(self.coord)} @ {self.coord}')
             yield self.panel.get(self.coord)
 
 
@@ -99,5 +131,15 @@ def answer_1():
     cell_count = len(p.rendered_cells)
     print(f'Answer 1: {cell_count}')
 
+
+def answer_2():
+    p = Panel()
+    p.set((0, 0), 1)
+    r = Robot((0, 0), p)
+    r.run()
+    print(p)
+
+
 if __name__ == '__main__':
     answer_1()
+    answer_2()
