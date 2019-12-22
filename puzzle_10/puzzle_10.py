@@ -31,26 +31,10 @@ class AsteroidField:
         self.asteroid_map = {}
 
     def calc_all_lines_of_site(self) -> LINES_OF_SIGHT:
-        for asteroid in self.asteroids:
-            self.calc_lines_of_sight(asteroid)
+        for coords in self.asteroids:
+            asteroid = Asteroid(self, coords)
+            asteroid.calc_lines_of_sight()
         return self.asteroid_map
-
-    def calc_lines_of_sight(self, coords: COORD) -> LINE_OF_SIGHT:
-        if coords in self.asteroid_map:
-            return self.asteroid_map[coords]
-        asteroid = Asteroid(coords, self)
-
-        for remote in self.asteroids:
-            if remote == coords:
-                continue
-            displacement = asteroid.calc_line_of_sight(remote)
-            if displacement is not None:
-                asteroid.res[remote] = displacement
-                bearing, distance = displacement
-                asteroid.los[bearing] = remote
-
-        self.asteroid_map[coords] = asteroid.res
-        return asteroid.res
 
     def show_field_los(self) -> str:
         return self.__define_field(lambda *coord: str(len(self.asteroid_map[coord])))
@@ -88,11 +72,27 @@ class AsteroidField:
 
 
 class Asteroid:
-    def __init__(self, coords: AsteroidField.COORD, asteroid_field: AsteroidField):
+    def __init__(self, asteroid_field: AsteroidField, coords: AsteroidField.COORD):
         self.asteroid_field = asteroid_field
         self.coords = coords
         self.res = {}
         self.los: AsteroidField.LINE_OF_SIGHT = {}
+
+    def calc_lines_of_sight(self) -> AsteroidField.LINE_OF_SIGHT:
+        if self.coords in self.asteroid_field.asteroid_map:
+            return self.asteroid_field.asteroid_map[self.coords]
+
+        for remote in self.asteroid_field.asteroids:
+            if remote == self.coords:
+                continue
+            displacement = self.calc_line_of_sight(remote)
+            if displacement is not None:
+                self.res[remote] = displacement
+                bearing, distance = displacement
+                self.los[bearing] = remote
+
+        self.asteroid_field.asteroid_map[self.coords] = self.res
+        return self.res
 
     def calc_line_of_sight(self: Asteroid, remote: AsteroidField.COORD) -> Optional[
             Tuple[AsteroidField.BEARING, AsteroidField.DISTANCE]]:
@@ -130,7 +130,7 @@ def test_1():
     # for l in los:
     #     print(l)
     print(af.show_field_los())
-    print(af)
+    # print(af)
 
 
 if __name__ == '__main__':
