@@ -64,9 +64,9 @@ class Tape(MutableSequence):
         if isinstance(i, tuple):
             mode, param = i
             return {
-                0: lambda: self.list[param],
+                0: lambda: self[param],
                 1: lambda: param,
-                2: lambda: self.list[self.relative_base + param]
+                2: lambda: self[self.relative_base + param]
             }[mode]()
         if isinstance(i, slice):
             return [self[j] for j in range(i.start, i.stop, 1 if i.step is None else i.step)]
