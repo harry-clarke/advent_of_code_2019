@@ -1,0 +1,103 @@
+from enum import Enum
+
+from util.intcode import IntCode, STATUS_CODES, Memory
+
+
+class Panel:
+    rendered_cells: {(int, int): int}
+
+    def __init__(self):
+        self.rendered_cells = {}
+
+    def get(self, coord):
+        if coord not in self.rendered_cells:
+            self.rendered_cells[coord] = 0
+        return self.rendered_cells[coord]
+
+    def set(self, coord, colour):
+        self.rendered_cells[coord] = colour
+
+
+class Robot:
+    DIRECTION = Enum('DIRECTION', 'UP RIGHT DOWN LEFT')
+
+    direction: DIRECTION
+    coord: (int, int)
+    brain: IntCode
+    panel: Panel
+    memory: Memory
+
+    def __init__(self, coord, panel: Panel):
+        self.panel = panel
+        self.direction = Robot.DIRECTION.UP
+        self.coord = coord
+        self.memory = Memory()
+        with open('input.txt') as f:
+            s = f.readline()
+            tape = list(map(int, s.split(',')))
+        self.brain = IntCode(tape, self.__brain_input(), self.__brain_output)
+
+    def run(self):
+        self.brain.run()
+
+    def act(self, colour, rotation_bit):
+        print(f'Brain output: colour: {colour}, rotation: {rotation_bit}')
+        self.panel.set(self.coord, colour)
+        self.change_direction(rotation_bit)
+        self.move_forward()
+
+    def move_forward(self):
+        dx, dy = {
+            Robot.DIRECTION.UP: (0, 1),
+            Robot.DIRECTION.RIGHT: (1, 0),
+            Robot.DIRECTION.DOWN: (0, -1),
+            Robot.DIRECTION.LEFT: (-1, 0)
+        }[self.direction]
+        x, y = self.coord
+        self.coord = (x + dx, y + dy)
+
+    def change_direction(self, rotation_bit):
+        if rotation_bit == 0:
+            self.__turn_left()
+        elif rotation_bit == 1:
+            self.__turn_right()
+        else:
+            raise ValueError()
+
+    def __turn_left(self):
+        self.direction = {
+            Robot.DIRECTION.UP: Robot.DIRECTION.LEFT,
+            Robot.DIRECTION.RIGHT: Robot.DIRECTION.UP,
+            Robot.DIRECTION.DOWN: Robot.DIRECTION.RIGHT,
+            Robot.DIRECTION.LEFT: Robot.DIRECTION.DOWN
+        }[self.direction]
+
+    def __turn_right(self):
+        self.direction = {
+            Robot.DIRECTION.UP: Robot.DIRECTION.RIGHT,
+            Robot.DIRECTION.RIGHT: Robot.DIRECTION.DOWN,
+            Robot.DIRECTION.DOWN: Robot.DIRECTION.LEFT,
+            Robot.DIRECTION.LEFT: Robot.DIRECTION.UP
+        }[self.direction]
+
+    def __brain_output(self, v):
+        self.memory.store(v)
+        assert len(self.memory.memory) <= 2
+        if len(self.memory.memory) == 2:
+            self.act(*list(self.memory))
+
+    def __brain_input(self):
+        while True:
+            print(f'Brain input: {self.panel.get(self.coord)} @ {self.coord}')
+            yield self.panel.get(self.coord)
+
+
+def answer_1():
+    p = Panel()
+    r = Robot((0, 0), p)
+    r.run()
+    cell_count = len(p.rendered_cells)
+    print(f'Answer 1: {cell_count}')
+
+if __name__ == '__main__':
+    answer_1()
