@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import sys
-from typing import Tuple
+from typing import Tuple, Optional
 
-import humanfriendly
 import time
 from math import copysign
+
+from numpy import lcm
 
 INPUT = (
     (-4, -9, -3),
@@ -22,11 +22,11 @@ TEST = (
 )
 
 
-class Jupiter:
+class Jupiter():
     moons: Tuple[Moon]
 
     def __init__(self, moons):
-        self.moons = tuple([Moon(self, pos) for pos in moons])
+        self.set_state(moons)
 
     def step(self):
         for moon in self.moons:
@@ -36,6 +36,10 @@ class Jupiter:
 
     def get_total_energy(self):
         return sum(moon.get_total_energy() for moon in self.moons)
+
+    def set_state(self, state):
+        state = (moon if isinstance(moon[0], tuple) else (moon, None) for moon in state)
+        self.moons = tuple(Moon(self, *moon) for moon in state)
 
     def get_state(self):
         return tuple(m.get_state() for m in self.moons)
@@ -49,10 +53,10 @@ class Moon:
     pos: Tuple[int]
     vel: Tuple[int]
 
-    def __init__(self, jupiter, pos):
+    def __init__(self, jupiter, pos, vel: Optional[Tuple[int]] = None):
         self.jupiter = jupiter
         self.pos = pos
-        self.vel = tuple(0 for _ in pos)
+        self.vel = vel if vel is not None else tuple(0 for _ in pos)
 
     def get_total_energy(self):
         return self.get_potential_energy() * self.get_kinetic_energy()
@@ -74,6 +78,10 @@ class Moon:
 
     def position_step(self):
         self.pos = tuple(p + v for p, v in zip(self.pos, self.vel))
+
+    def set_state(self, pos, vel):
+        self.pos = pos
+        self.vel = vel
 
     def get_state(self):
         return self.pos, self.vel
@@ -101,40 +109,49 @@ def answer_1():
     print(f'Answer 1: {j.get_total_energy()}')
 
 
-def find_dimensional_orbit(j, n):
+def find_dimensional_orbit(j: Jupiter, n):
     def map_state(s):
         return [[v[n] for v in m] for m in s]
-    initial_state = map_state(j.get_state())
+
+    initial_state = j.get_state()
+    initial_state_n = map_state(initial_state)
     i = 1
+
     it = int(time.perf_counter())
     ct = it
+
     j.step()
-    while map_state(j.get_state()) != initial_state:
+    while map_state(j.get_state()) != initial_state_n:
         i += 1
         j.step()
         if time.perf_counter() - ct >= 5:
             ct = int(time.perf_counter())
             print(
-                f'@{ct - it}s: {i} steps ({i / ct - it}/s)'
+                f'Dimension[{n}]@{ct - it}s: {i} steps ({i / ct - it}/s)'
             )
-    return i, j
+
+    j.set_state(initial_state)
+    return i
 
 
 def find_complete_orbit(j):
     initial_state = j.get_state()
-
+    dimension_count = len(initial_state[0][0])
+    print(f'{dimension_count} dimensions')
+    orbits = [find_dimensional_orbit(j, n) for n in range(dimension_count)]
+    return lcm.reduce(orbits, dtype='int64')
 
 
 def test_2():
     j = Jupiter(TEST)
-    i, j = find_complete_orbit(j)
+    i = find_complete_orbit(j)
     assert 2772 == i
     print(f'Answer 2, T1: {i} ({j}')
 
 
 def answer_2():
     j = Jupiter(INPUT)
-    i, j = find_complete_orbit(j)
+    i = find_complete_orbit(j)
     print(f'Answer 2: {i} ({j})')
 
 
